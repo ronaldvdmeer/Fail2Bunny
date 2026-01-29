@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_path: str, strict: bool = False) -> dict:
+def load_config(config_path: str) -> dict:
     """Load configuration from JSON file."""
     path = Path(config_path)
     
@@ -70,7 +70,7 @@ def load_config(config_path: str, strict: bool = False) -> dict:
         if key not in config:
             config[key] = value
     
-    # Validate baseline IPs
+    # Validate baseline IPs (strict - must be valid)
     baseline_ips = config["baseline_ignoreip"]
     if not isinstance(baseline_ips, list):
         logger.error("baseline_ignoreip must be a list")
@@ -83,13 +83,9 @@ def load_config(config_path: str, strict: bool = False) -> dict:
     
     if invalid_baseline_ips:
         error_msg = f"Invalid IP(s) in baseline_ignoreip: {', '.join(invalid_baseline_ips)}"
-        if strict:
-            logger.error(error_msg)
-            sys.exit(1)
-        else:
-            logger.warning(error_msg)
-            config["baseline_ignoreip"] = [ip for ip in baseline_ips if validate_ip_or_cidr(ip) is not None]
-            logger.warning(f"Removed {len(invalid_baseline_ips)} invalid IP(s) from baseline")
+        logger.error(error_msg)
+        logger.error("Fix your config file and try again")
+        sys.exit(1)
     
     return config
 
@@ -323,11 +319,6 @@ def main():
         action="store_true",
         help="Enable verbose output"
     )
-    parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Fail if baseline IPs contain invalid entries"
-    )
     
     args = parser.parse_args()
     
@@ -336,7 +327,7 @@ def main():
     
     # Load config
     logger.info(f"Loading config from: {args.config}")
-    config = load_config(args.config, strict=args.strict)
+    config = load_config(args.config)
     
     target_file = Path(config["target_file"])
     baseline_ips = config["baseline_ignoreip"]
