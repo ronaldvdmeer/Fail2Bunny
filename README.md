@@ -1,5 +1,7 @@
 # Fail2Bunny
 
+![Fail2Bunny Banner](./images/banner.png)
+
 Automatically sync Bunny CDN edge IP lists to Fail2ban whitelist.
 
 Prevents Bunny edge proxies from getting banned by Fail2ban (which causes 502 errors).
