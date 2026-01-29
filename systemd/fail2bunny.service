@@ -1,0 +1,24 @@
+[Unit]
+Description=Fail2Bunny - Bunny CDN Edge IP Whitelist for Fail2ban
+Documentation=https://github.com/yourusername/fail2bunny
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/fail2bunny.py
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/fail2ban/jail.d
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=fail2bunny
+
+[Install]
+WantedBy=multi-user.target

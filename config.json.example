@@ -1,0 +1,10 @@
+{
+    "target_file": "/etc/fail2ban/jail.d/bunny-edges.local",
+    "baseline_ignoreip": [
+        "127.0.0.1/8",
+        "::1"
+    ],
+    "timeout_seconds": 30,
+    "reload_method": "auto",
+    "interval_hint": "6h"
+}
