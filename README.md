@@ -1,6 +1,6 @@
 # Fail2Bunny
 
-![Fail2Bunny Banner](./images/banner.png)
+![Fail2Bunny Banner](./images/banner.gif)
 
 Automatically sync Bunny CDN edge IP lists to Fail2ban whitelist.
 
