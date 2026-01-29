@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_config(config_path: str) -> dict:
+def load_config(config_path: str, strict: bool = False) -> dict:
     """Load configuration from JSON file."""
     path = Path(config_path)
     
@@ -69,6 +69,27 @@ def load_config(config_path: str) -> dict:
     for key, value in defaults.items():
         if key not in config:
             config[key] = value
+    
+    # Validate baseline IPs
+    baseline_ips = config["baseline_ignoreip"]
+    if not isinstance(baseline_ips, list):
+        logger.error("baseline_ignoreip must be a list")
+        sys.exit(1)
+    
+    invalid_baseline_ips = []
+    for ip in baseline_ips:
+        if validate_ip_or_cidr(ip) is None:
+            invalid_baseline_ips.append(ip)
+    
+    if invalid_baseline_ips:
+        error_msg = f"Invalid IP(s) in baseline_ignoreip: {', '.join(invalid_baseline_ips)}"
+        if strict:
+            logger.error(error_msg)
+            sys.exit(1)
+        else:
+            logger.warning(error_msg)
+            config["baseline_ignoreip"] = [ip for ip in baseline_ips if validate_ip_or_cidr(ip) is not None]
+            logger.warning(f"Removed {len(invalid_baseline_ips)} invalid IP(s) from baseline")
     
     return config
 
@@ -136,10 +157,11 @@ def validate_ip_or_cidr(ip_str: str) -> Optional[str]:
     return None
 
 
-def process_ip_lists(ipv4_list: list[str], ipv6_list: list[str]) -> tuple[list[str], list[str]]:
-    """Validate, deduplicate, and sort IP lists."""
+def process_ip_lists(ipv4_list: list[str], ipv6_list: list[str]) -> tuple[list[str], list[str], int]:
+    """Validate, deduplicate, and sort IP lists. Returns (ipv4, ipv6, invalid_count)."""
     ipv4_validated = set()
     ipv6_validated = set()
+    invalid_count = 0
     
     for ip_str in ipv4_list + ipv6_list:
         validated = validate_ip_or_cidr(ip_str)
@@ -156,6 +178,8 @@ def process_ip_lists(ipv4_list: list[str], ipv6_list: list[str]) -> tuple[list[s
                     ipv4_validated.add(validated)
                 else:
                     ipv6_validated.add(validated)
+        else:
+            invalid_count += 1
     
     # Sort for stable output
     def sort_key(ip_str):
@@ -164,7 +188,7 @@ def process_ip_lists(ipv4_list: list[str], ipv6_list: list[str]) -> tuple[list[s
         except ValueError:
             return ipaddress.ip_address(ip_str)
     
-    return sorted(ipv4_validated, key=sort_key), sorted(ipv6_validated, key=sort_key)
+    return sorted(ipv4_validated, key=sort_key), sorted(ipv6_validated, key=sort_key), invalid_count
 
 
 def generate_fail2ban_config(baseline_ips: list[str], bunny_ipv4: list[str], bunny_ipv6: list[str]) -> str:
@@ -299,6 +323,11 @@ def main():
         action="store_true",
         help="Enable verbose output"
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail if baseline IPs contain invalid entries"
+    )
     
     args = parser.parse_args()
     
@@ -307,7 +336,7 @@ def main():
     
     # Load config
     logger.info(f"Loading config from: {args.config}")
-    config = load_config(args.config)
+    config = load_config(args.config, strict=args.strict)
     
     target_file = Path(config["target_file"])
     baseline_ips = config["baseline_ignoreip"]
@@ -330,8 +359,10 @@ def main():
     logger.info(f"Fetched {len(ipv4_raw)} IPv4 and {len(ipv6_raw)} IPv6 entries")
     
     # Process and validate
-    ipv4_validated, ipv6_validated = process_ip_lists(ipv4_raw, ipv6_raw)
+    ipv4_validated, ipv6_validated, invalid_count = process_ip_lists(ipv4_raw, ipv6_raw)
     logger.info(f"Validated {len(ipv4_validated)} IPv4 and {len(ipv6_validated)} IPv6 entries")
+    if invalid_count > 0:
+        logger.warning(f"Skipped {invalid_count} invalid IP(s) from Bunny API")
     
     # Generate config
     new_content = generate_fail2ban_config(baseline_ips, ipv4_validated, ipv6_validated)
