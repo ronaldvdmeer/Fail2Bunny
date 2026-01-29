@@ -146,7 +146,14 @@ This extends the `ignoreip` setting for all jails via the `[DEFAULT]` section.
 Check if Bunny IPs are whitelisted:
 
 ```bash
-sudo fail2ban-client get DEFAULT ignoreip
+# View all ignoreip rules in Fail2ban config
+sudo fail2ban-client -d | grep -i "ignoreip"
+
+# Check specific jail (e.g., sshd)
+sudo fail2ban-client get sshd ignoreip
+
+# View the generated config file
+sudo cat /etc/fail2ban/jail.d/bunny-edges.local
 ```
 
 View Fail2ban status:
