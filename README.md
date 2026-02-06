@@ -1,5 +1,10 @@
 # Fail2Bunny
 
+![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Fail2ban](https://img.shields.io/badge/fail2ban-required-orange)
+![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
+
 Automatically sync Bunny CDN edge IP lists to Fail2ban whitelist.
 
 Prevents Bunny edge proxies from getting banned by Fail2ban (which causes 502 errors).
