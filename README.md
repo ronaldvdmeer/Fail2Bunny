@@ -1,38 +1,67 @@
 # Fail2Bunny
 
-![Python Version](https://img.shields.io/badge/python-3.9%2B-blue)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Fail2ban](https://img.shields.io/badge/fail2ban-required-orange)
-![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
+![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)
 
-Automatically sync Bunny CDN edge IP lists to Fail2ban whitelist.
+> Automatically sync [Bunny CDN](https://bunny.net) edge-server IPs to a Fail2ban whitelist — preventing 502 errors caused by accidentally banning Bunny edge proxies.
 
-Prevents Bunny edge proxies from getting banned by Fail2ban (which causes 502 errors).
+---
 
-## Overview
+## Table of Contents
 
-Fail2Bunny is a lightweight Python tool that periodically downloads Bunny CDN's edge server IP lists and ensures those networks are whitelisted in Fail2ban. This prevents legitimate traffic from Bunny's edge infrastructure from being incorrectly blocked.
+- [How It Works](#how-it-works)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Generated Config File](#generated-config-file)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [License](#license)
+
+---
+
+## How It Works
+
+```
+Bunny CDN API ──► Fail2Bunny ──► /etc/fail2ban/jail.d/bunny-edges.local ──► Fail2ban reload
+```
+
+1. **Fetch** — Downloads IPv4 and IPv6 edge-server lists from the Bunny CDN API.
+2. **Validate** — Parses and deduplicates all IP addresses and CIDR ranges.
+3. **Merge** — Combines fetched IPs with your baseline whitelist (localhost, admin IPs, etc.).
+4. **Compare** — Diffs against the existing config file; skips writes when nothing changed.
+5. **Write** — Atomically writes the new config (temp file → rename, no partial writes).
+6. **Reload** — Reloads Fail2ban only when changes were actually made.
 
 ## Features
 
-- 📥 Downloads IPv4 and IPv6 edge server lists from Bunny CDN API
-- ✔️ Validates and deduplicates IP addresses/CIDR ranges  
-- 🔄 Atomic file updates (safe, no partial writes)
-- 🎯 Only reloads Fail2ban when changes are detected
-- 🛡️ Supports baseline IPs (localhost, admin IPs)
-- 🧪 Dry-run mode for testing
-- 📝 Systemd-friendly logging
-- 📦 **Zero external dependencies** - uses only Python standard library
+| | |
+|---|---|
+| 📥 | Downloads IPv4 + IPv6 edge lists from Bunny CDN API |
+| ✔️ | Validates and deduplicates IP/CIDR entries |
+| 🔄 | Atomic file updates — no partial writes |
+| 🎯 | Reloads Fail2ban only on actual changes |
+| 🛡️ | Configurable baseline IPs (localhost, admin, private ranges) |
+| 🧪 | Dry-run mode for safe previews |
+| 📝 | Systemd-friendly logging (stdout/stderr) |
+| 📦 | **Zero external dependencies** — Python standard library only |
 
 ## Requirements
 
-- Python 3.9+
-- Fail2ban installed and configured
-- Root/sudo access
+| Dependency | Version |
+|---|---|
+| Python | 3.9+ |
+| Fail2ban | installed & configured |
+| Privileges | root / sudo |
 
 ## Installation
 
-### Quick Start
+### 1. Copy the script & config
 
 ```bash
 sudo cp fail2bunny.py /usr/local/bin/
@@ -42,7 +71,7 @@ sudo mkdir -p /etc/fail2bunny
 sudo cp config.json.example /etc/fail2bunny/config.json
 ```
 
-### Systemd Timer (Recommended)
+### 2a. Systemd timer (recommended)
 
 ```bash
 sudo cp systemd/fail2bunny.service /etc/systemd/system/
@@ -51,45 +80,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now fail2bunny.timer
 ```
 
-Monitor the timer:
-```bash
-sudo systemctl status fail2bunny.timer
-sudo systemctl list-timers fail2bunny.timer
-```
-
-### Cron Alternative
+### 2b. Cron alternative
 
 ```bash
-sudo crontab -e
-
-# Add this line to run every 6 hours
+# Run every 6 hours
 0 */6 * * * /usr/bin/python3 /usr/local/bin/fail2bunny.py 2>&1 | logger -t fail2bunny
-```
-
-## Usage
-
-### Manual Run
-
-```bash
-sudo /usr/bin/python3 /usr/local/bin/fail2bunny.py
-```
-
-### Dry Run (Preview Changes)
-
-```bash
-sudo /usr/bin/python3 /usr/local/bin/fail2bunny.py --dry-run
-```
-
-### Verbose Output
-
-```bash
-sudo /usr/bin/python3 /usr/local/bin/fail2bunny.py --verbose
-```
-
-### View Logs
-
-```bash
-sudo journalctl -u fail2bunny.service -f
 ```
 
 ## Configuration
@@ -106,109 +101,128 @@ Edit `/etc/fail2bunny/config.json`:
         "192.168.1.100"
     ],
     "timeout_seconds": 30,
-    "reload_method": "auto"
+    "reload_method": "auto",
+    "interval_hint": "6h"
 }
 ```
 
-### Configuration Options
-
 | Option | Description | Default |
-|--------|-------------|---------|
-| `target_file` | Path to generated Fail2ban config | `/etc/fail2ban/jail.d/bunny-edges.local` |
-| `baseline_ignoreip` | IPs to always include in whitelist | `["127.0.0.1/8", "::1"]` |
-| `timeout_seconds` | HTTP timeout in seconds | `30` |
-| `reload_method` | How to reload Fail2ban: `auto`, `systemctl`, `service`, `client` | `auto` |
+|---|---|---|
+| `target_file` | Path to the generated Fail2ban config file | `/etc/fail2ban/jail.d/bunny-edges.local` |
+| `baseline_ignoreip` | IPs/CIDRs to always include in the whitelist | `["127.0.0.1/8", "::1"]` |
+| `timeout_seconds` | HTTP request timeout (seconds) | `30` |
+| `reload_method` | Fail2ban reload strategy: `auto`, `systemctl`, `service`, or `client` | `auto` |
+| `interval_hint` | Informational hint for scheduling frequency | `"6h"` |
 
-## How It Works
+## Usage
 
-1. **Fetch**: Downloads IPv4 and IPv6 edge server lists from Bunny CDN API
-2. **Validate**: Parses and validates all IP addresses and CIDR ranges
-3. **Generate**: Creates a Fail2ban jail.d config with `[DEFAULT]` section
-4. **Compare**: Checks if new config differs from existing one
-5. **Write**: Atomically writes new config (temp file + rename)
-6. **Reload**: Reloads Fail2ban only if changes were made
+```bash
+# Standard run
+sudo fail2bunny.py
+
+# Custom config path
+sudo fail2bunny.py -c /path/to/config.json
+
+# Dry run — preview changes without writing or reloading
+sudo fail2bunny.py --dry-run
+
+# Verbose output
+sudo fail2bunny.py -v
+```
+
+| Flag | Short | Description |
+|---|---|---|
+| `--config` | `-c` | Path to config file (default: `/etc/fail2bunny/config.json`) |
+| `--dry-run` | | Show what would change without writing or reloading |
+| `--verbose` | `-v` | Enable debug-level output |
+
+### View logs
+
+```bash
+sudo journalctl -u fail2bunny.service -f
+```
+
+### Monitor the timer
+
+```bash
+sudo systemctl status fail2bunny.timer
+sudo systemctl list-timers fail2bunny.timer
+```
 
 ## Generated Config File
 
-The tool generates `/etc/fail2ban/jail.d/bunny-edges.local`:
+Fail2Bunny generates `/etc/fail2ban/jail.d/bunny-edges.local`:
 
 ```ini
 # Bunny CDN Edge IP Whitelist for Fail2ban
-# Auto-generated by fail2bunny - DO NOT EDIT MANUALLY
+# Auto-generated by fail2bunny — DO NOT EDIT MANUALLY
 #
 # IPv4 entries: 595
 # IPv6 entries: 345
 # Baseline entries: 2
 
 [DEFAULT]
-ignoreip = 127.0.0.1/8 ::1 1.2.3.4/32 5.6.7.8/32 ...
+ignoreip = 127.0.0.1/8 ::1 1.2.3.4/32 5.6.7.8/32 …
 ```
 
-This extends the `ignoreip` setting for all jails via the `[DEFAULT]` section.
+The `[DEFAULT]` section extends `ignoreip` for **all** Fail2ban jails.
 
 ## Verification
 
-Check if Bunny IPs are whitelisted:
-
 ```bash
-# View all ignoreip rules in Fail2ban config
+# All ignoreip rules across config
 sudo fail2ban-client -d | grep -i "ignoreip"
 
-# Check specific jail (e.g., sshd)
+# Per-jail check (e.g. sshd)
 sudo fail2ban-client get sshd ignoreip
 
-# View the generated config file
-sudo cat /etc/fail2ban/jail.d/bunny-edges.local
-```
+# Inspect generated file directly
+cat /etc/fail2ban/jail.d/bunny-edges.local
 
-View Fail2ban status:
-
-```bash
+# Overall Fail2ban status
 sudo fail2ban-client status --all
 ```
 
 ## Troubleshooting
 
-### Fail2ban not reloading
-
-Check if Fail2ban is running:
-```bash
-sudo systemctl status fail2ban
-```
-
-Try manual reload:
-```bash
-sudo fail2ban-client reload
-```
-
-### Check configuration syntax
+<details>
+<summary><strong>Fail2ban not reloading</strong></summary>
 
 ```bash
-sudo fail2ban-client -d
+sudo systemctl status fail2ban   # is it running?
+sudo fail2ban-client reload       # manual reload
 ```
+</details>
 
-### Network connectivity issues
+<details>
+<summary><strong>Configuration syntax errors</strong></summary>
 
-Test connectivity to Bunny CDN:
+```bash
+sudo fail2ban-client -d           # dumps parsed config, shows errors
+```
+</details>
+
+<details>
+<summary><strong>Network connectivity issues</strong></summary>
+
 ```bash
 curl -I https://bunnycdn.com/api/system/edgeserverlist/
 ```
+</details>
 
 ## Development
-
-Clone and test locally:
 
 ```bash
 git clone git@github.com:ronaldvdmeer/Fail2Bunny.git
 cd Fail2Bunny
 
-# Test the script
+# Preview changes locally
 python3 fail2bunny.py --dry-run
 ```
 
 ## License
 
-MIT License
+[MIT](LICENSE)
 
 ## Author
 
